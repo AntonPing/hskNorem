@@ -6,7 +6,7 @@ import qualified Text.Parsec.Expr as Ex
 import Data.Char
 import qualified Data.Text as T
 import Control.Monad ( void )
-import Utils (Expr(..), Literal(..), Name)
+import Utils
 
 langDef :: Tok.LanguageDef ()
 langDef = Tok.LanguageDef
@@ -20,6 +20,7 @@ langDef = Tok.LanguageDef
   , Tok.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , Tok.reservedNames   = [
       "=","->","fn","let","in",
+      "match", "of", "|",
       "if","then","else",
       "true", "false"
     ]
@@ -54,9 +55,11 @@ litChar = Tok.charLiteral lexer
 litString :: Parser String
 litString = Tok.stringLiteral lexer
 
-
 whiteSpace :: Parser ()
 whiteSpace = Tok.whiteSpace lexer
+
+peek :: Parser a -> Parser b -> Parser b 
+peek p1 p2 = (try . lookAhead) p1 >> p2
 
 varName :: Parser Name 
 varName = fmap T.pack (Tok.identifier lexer)
@@ -86,7 +89,7 @@ letIn = do
     reserved "let"
     var <- varName <?> "var!"
     reserved "="
-    def <- application
+    def <- application <?> "app!"
     reserved "in"
     body <- application
     return $ ELet var def body
@@ -95,21 +98,63 @@ literal :: Parser Literal
 literal = do
         LInt <$> litInt
     <|> LReal <$> litReal
-    <|> (reserved "true" >> return (LBool True))
-    <|> (reserved "false" >> return (LBool False))
-    <|> fail "Can't Parse Literal!"
-
+    <|> peek (reserved "true") (return (LBool True))
+    <|> peek (reserved "false") (return (LBool False))
+    <?> "Can't Parse Literal!"
 
 expression :: Parser Expr
-expression = spaces >> (
-    do  (try . lookAhead) (string "fn") >> lambda
-    <|> ((try . lookAhead) (string "let") >> letIn)
-    <|> ((try . lookAhead) (char '(') >> parens application)
+expression = do
+        peek (reserved "fn") lambda
+    <|> peek (reserved "let") letIn
+    <|> peek (char '(') (parens application)
+    <|> peek (reserved "match") case'
     <|> try variable
     <|> ELit <$> literal
-    <?> "Expression!")
+    <?> "Can't Parse Expression!"
 
+
+tupled :: Parser a -> Parser [a]
+tupled p = parens $ sepBy p (char ',')
+
+pVar :: Parser Pattern
+pVar = PVar <$> varName
+
+pCon :: Parser Pattern
+pCon = parens $ do
+    x <- varName
+    xs <- sepBy1 pattern' spaces
+    return $ PCon x xs
+
+pTup :: Parser Pattern
+pTup = do
+    xs <- tupled pattern'
+    return $ PTup xs
+
+pLit :: Parser Pattern
+pLit = PLit <$> literal
+
+pWild :: Parser Pattern
+pWild = char '_' >> return PWild
+
+pattern' :: Parser Pattern
+pattern' = choice [pCon,pTup,pVar,pLit,pWild]
+
+match :: Parser Match
+match = do
+    reserved "|"
+    lhs <- pattern'
+    spaces >> reserved "->" >> spaces
+    rhs <- expression
+    return $ Match lhs rhs []
+
+case' :: Parser Expr
+case' = do
+    reserved "match"
+    expr <- expression
+    reserved "of"
+    cases <- many1 match
+    return $ ECase expr cases
 
 
 parseExpr :: String -> Either ParseError Expr
-parseExpr xs = parse expression "input" xs
+parseExpr = parse expression "input"

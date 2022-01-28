@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Utils where
 
@@ -11,7 +12,7 @@ import Data.List (intersperse)
 
 import qualified Data.Text as T
 import Prettyprinter as P
-import Prettyprinter.Render.Text 
+import Prettyprinter.Render.Text
 
 
 type Name = T.Text
@@ -31,9 +32,9 @@ data Expr =
 -- | EBlock (M.Map Name Expr) Expr
 
 data Match = Match
-    { _matchPat :: Pattern
-    , _matchBody :: Expr
-    , _matchGuard :: [Expr]
+    { matchPat :: Pattern
+    , matchBody :: Expr
+    , matchGuard :: [Expr]
     }
     deriving (Eq, Ord)
 
@@ -79,8 +80,8 @@ instance Pretty Type where
     pretty TInt = "Int"
     pretty TReal = "Real"
     pretty TBool = "Bool"
-    
-    pretty (t1 `TArr` t2) = 
+
+    pretty (t1 `TArr` t2) =
         P.encloseSep "(" ")" " -> " (fmap pretty xs)
         where xs = arrUnfold (t1 `TArr` t2)
     pretty (TTup xs) = P.tupled (fmap pretty xs)
@@ -101,13 +102,13 @@ instance Show Literal where
 
 instance Pretty Expr where
     pretty (EVar x) = pretty x
-    pretty t@ELam{} = 
-        "(λ." <+> P.sep xs <+> " -> " <+> P.sep ys <+> ")"
+    pretty t@ELam{} =
+        "(λ." <+> P.sep xs <+> "->" <+> P.sep ys <> ")"
         where
             (xs',t') = lamUnfold t
             xs = fmap pretty xs'
             ys = fmap pretty (appUnfold t')
-            
+
     pretty t@EApp{} =
         P.encloseSep "(" ")" " " xs
         where xs = fmap pretty (appUnfold t)
@@ -118,12 +119,13 @@ instance Pretty Expr where
             (xs',t') = letUnfold t
             xs = fmap (\(x,y) -> pretty x <+> "=" <+> pretty y) xs'
     pretty (ELit b) = pretty b
-    pretty (EIfte cd tr fl) = P.sep 
+    pretty (EIfte cd tr fl) = P.sep
         [ "if" <+> pretty cd
         , "then" <+> pretty tr
         , "else" <+> pretty fl
         ]
-    pretty (ECase t xs) = pretty t <+> P.vsep (fmap pretty xs)
+    pretty (ECase t xs) = "match" <+> pretty t <+> "of" <> hardline 
+                    <> P.vsep (fmap pretty xs)
     pretty (EAnno t ty) = pretty t <+> pretty ty
     pretty (ETup xs) = P.tupled (fmap pretty xs)
 
@@ -131,13 +133,19 @@ instance Show Expr where
     show e = T.unpack $ docRender (pretty e)
 
 instance Pretty Match where
-    pretty m = "undefined"
+    pretty Match{..} =
+        "|" <+> pretty matchPat <+> "->" <+> pretty matchBody
 
 instance Show Match where
     show m = T.unpack $ docRender (pretty m)
 
 instance Pretty Pattern where
-    pretty p = "undefined"
+    pretty (PVar x) = pretty x
+    pretty (PCon x xs) = P.encloseSep "(" ")" " "
+                        (pretty x: fmap pretty xs)
+    pretty (PTup xs) = tupled (fmap pretty xs)
+    pretty (PLit lit) = pretty lit
+    pretty PWild = "_"
 
 instance Show Pattern where
     show p = T.unpack $ docRender (pretty p)
@@ -216,7 +224,7 @@ instance Substitutable Type where
     subst s (TVar n) = fromMaybe (TVar n) (L.lookup n s)
     subst s (TArr t1 t2) = TArr (subst s t1) (subst s t2)
     subst s (TTup xs) = TTup (fmap (subst s) xs)
-    subst s (TForall xs ty) = 
+    subst s (TForall xs ty) =
         let s' = filter (\(k,v) -> k `notElem` xs) s
         in TForall xs (subst s' ty)
     subst s other = other

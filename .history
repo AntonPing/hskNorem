@@ -1,0 +1,55 @@
+match x of | x -> x | y -> y
+match x of | x -> x | y -> y
+match x of | x -> x | y -> y
+match x of | a -> a | b -> b
+| x -> x
+match x of 
+:multi
+| y -> y
+| x -> x
+match x of
+:multi
+match x ->
+:multi
+| y -> y
+| x -> x 
+match x of
+:multi
+| y -> y
+| x -> x
+match x of
+:multi
+| z -> z
+| y -> y
+case x of
+:multi
+  z -> z
+  y -> y
+case x of
+:multi
+     f x g x
+:eval fn f g x ->
+:multi
+:multi
+asdfasdf
+:paste
+paste
+:q
+\\aasdfsad
+\\aasdfsad
+asdasdf\
+asfsad
+fasdfasd\\
+asdfsda\
+asdfdsa
+\
+\\
+\
+:eval fn x -> \
+:quit
+:eval fn f x -> f x
+:qui
+:qq
+:q
+:q
+help

@@ -11,12 +11,9 @@ import qualified Data.Bifunctor as Bi
 
 import Debug.Trace
 
-
-
 import Control.Monad.Except
 
 import Control.Monad.RWS
-
 
 import Control.Exception (throw)
 
@@ -31,8 +28,10 @@ data InferError =
     deriving (Show)
 
 instance Pretty InferError where
-    pretty OccurCheckFailed = "Occur check failed!"
-    pretty _ = "an infer error happend:"
+    pretty OccurCheckFailed = "Occur Check Failed!"
+    pretty TupleDiffLength = "Tuple of Different Length!"
+    pretty ConstUnifyFailed = "Constant Unify Failed!"
+    pretty UnboundVariable = "Unbound Variable!"
 
 type Logs = Doc T.Text
 
@@ -144,7 +143,6 @@ tiLiteral (LFun _ t) = (M.empty, t)
 
 ti :: Expr -> Infer (Subst, Type)
 ti (EVar x) = do
-    tell ("+ infer var" <+> pretty x <+> " : ")
     mayTy <- lookupEnv x
     case mayTy of
         Nothing -> throwError UnboundVariable
@@ -196,6 +194,19 @@ typeInfer env e = do
 
 typeInferTop :: Expr -> (Either InferError Type, Logs)
 typeInferTop expr = runInfer $ typeInfer M.empty expr
+
+
+typeInferIO :: Expr -> IO ()
+typeInferIO expr =
+    let (ty,log) = typeInferTop expr
+    in case ty of
+        Left err -> do
+            putStrLn "Fatal: An error occured in type inference!"
+            print err
+        Right ty -> do
+            putStrLn "type inference successed!"
+            print ty
+
 
 showResult :: (Either InferError Type, Logs) -> T.Text 
 showResult (Left err, logs) =
