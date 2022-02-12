@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module TypeInfer where
-import Utils
 
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -10,35 +9,39 @@ import qualified Data.Text as T
 import qualified Data.Bifunctor as Bi
 
 import Debug.Trace
-
 import Control.Monad.Except
-
 import Control.Monad.RWS
-
 import Control.Exception (throw)
-
-
 import Prettyprinter
+
+import Utils
+import Environment
+import Control.Monad.Reader (runReader)
 
 data InferError =
       OccurCheckFailed
     | TupleDiffLength
     | ConstUnifyFailed
     | UnboundVariable
-    deriving (Show)
+    | NotAConstructor
+    | PatternNotExhausted
 
 instance Pretty InferError where
     pretty OccurCheckFailed = "Occur Check Failed!"
     pretty TupleDiffLength = "Tuple of Different Length!"
     pretty ConstUnifyFailed = "Constant Unify Failed!"
     pretty UnboundVariable = "Unbound Variable!"
+    pretty NotAConstructor = "Not a Constructor!"
+    pretty PatternNotExhausted = "Pattern Not Exhausted!"
+
+instance Show InferError where
+    show e = T.unpack $ docRender (pretty e)
 
 type Logs = Doc T.Text
 
 newtype TypeEnv = TypeEnv { getEnv :: M.Map Name Type }
 
-type Infer a =  ExceptT InferError (RWS TypeEnv Logs Integer) a
-
+type Infer a =  ExceptT InferError (RWST TypeEnv Logs Integer Env) a
 
 type Subst = M.Map Name Type
 
@@ -50,7 +53,6 @@ newVar = do
 
 nestedLog :: Infer a -> Infer a
 nestedLog = censor (\log -> hardline <> indent 2 log <> hardline)
-
 
 logEnv :: Infer ()
 logEnv = do
@@ -68,9 +70,8 @@ lookupEnv x = do
     (TypeEnv env) <- ask
     return $ M.lookup x env
 
-
-runInfer :: Infer a -> (Either InferError a,Logs)
-runInfer ti = evalRWS (runExceptT ti) (TypeEnv M.empty) 0
+runInfer :: Infer a -> (Either InferError a, Logs)
+runInfer ti = runReader (evalRWST (runExceptT ti) (TypeEnv M.empty) 0) emptyEnv 
 
 compose :: Subst -> Subst -> Subst
 compose s1 s2 = M.map (apply s2) s1 `M.union` s2
@@ -99,7 +100,6 @@ instance Types TypeEnv where
     ftv (TypeEnv env) = ftv (M.elems env)
     apply s (TypeEnv env) = TypeEnv (M.map (apply s) env)
 
-
 generalize :: TypeEnv -> Type -> Type
 generalize env t =
     let vars = S.toList (ftv t `S.difference` ftv env)
@@ -113,6 +113,10 @@ instantiate vars t = do
 
 unify :: Type -> Type -> Either InferError Subst
 unify (TArr a1 b1) (TArr a2 b2) = do
+    s1 <- unify a1 a2
+    s2 <- unify (apply s1 b1) (apply s1 b2)
+    Right $ s2 `compose` s1
+unify (TApp a1 b1) (TApp a2 b2) = do
     s1 <- unify a1 a2
     s2 <- unify (apply s1 b1) (apply s1 b2)
     Right $ s2 `compose` s1
@@ -163,7 +167,7 @@ ti (ELam x e) = do
         <+> "has type: " <+> pretty t1
     return (s1 , TArr (apply s1 tv) t1)
 ti (EApp e1 e2) = do
-    tell $ "+ In application " <+> pretty (EApp e1 e2)
+    tell $ "+ In application" <+> pretty (EApp e1 e2)
     (s1, t1) <- nestedLog $ ti e1
     tell $ "-" <+> pretty e1 <+> "has type: " <+> pretty t1
     (s2, t2) <- nestedLog $ local (apply s1) (ti e2)
@@ -177,7 +181,27 @@ ti (EApp e1 e2) = do
             tell $ hardline <> "- unify them:" <+> viaShow (show s')
             tell $ pretty t'
             return (s',t')
-            
+ti (ECase x ty css) = do
+    tell $ "+ In Case Matching of" <+> pretty x 
+    (s1, t1) <- nestedLog $ ti x
+    case unify t1 (TVar ty) of
+
+
+    let cons =  . dt_branchs) 
+
+
+    mapM (a -> m b) (t a)
+
+    where
+        caseTi Case{..} = do
+            case getData con of
+                Just DataDecl{name,args,branches} -> do
+                    let len = length args
+
+                
+                Nothing -> throwError e
+
+
 ti (ELet x e1 e2) = do
     env <- ask
     (s1, t1) <- ti e1

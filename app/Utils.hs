@@ -7,12 +7,11 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.List as L
 import Data.Maybe
-import Data.List (intersperse)
 
 
 import qualified Data.Text as T
 import Prettyprinter as P
-import Prettyprinter.Render.Text
+import Prettyprinter.Render.Text as PRT
 
 
 type Name = T.Text
@@ -25,16 +24,22 @@ data Expr =
     | ETup [Expr]
     | ELit Literal
     | EIfte Expr Expr Expr
-    | ECase Expr [Match]
+    | ECase Expr [Case]
     | EAnno Expr Type
     deriving (Eq, Ord)
 
 -- | EBlock (M.Map Name Expr) Expr
 
+data Case = Case
+    { cons :: Name
+    , args :: [Name]
+    , body :: Expr
+    } deriving (Eq, Ord)
+
+
 data Match = Match
     { matchPat :: Pattern
     , matchBody :: Expr
-    , matchGuard :: [Expr]
     }
     deriving (Eq, Ord)
 
@@ -59,6 +64,7 @@ data Type =
     | TReal
     | TBool
     | TArr Type Type
+    | TCon Name [Type]
     | TTup [Type]
     | TForall [Name] Type
     deriving (Eq, Ord)
@@ -71,6 +77,8 @@ data Decl =
     deriving (Eq, Ord, Show)
 -}
 
+bracketed :: [Doc ann] -> Doc ann
+bracketed =  P.encloseSep "(" ")" " "
 
 docRender :: Doc ann -> T.Text
 docRender = renderStrict . layoutPretty defaultLayoutOptions
@@ -80,25 +88,20 @@ instance Pretty Type where
     pretty TInt = "Int"
     pretty TReal = "Real"
     pretty TBool = "Bool"
+    pretty t@TArr{} = P.encloseSep "(" ")" " -> "
+        (fmap pretty (tyArrUnfold t))
+    
+    pretty t@TApp{} = bracketed (fmap pretty (tyAppUnfold t))
 
-    pretty (t1 `TArr` t2) =
-        P.encloseSep "(" ")" " -> " (fmap pretty xs)
-        where xs = arrUnfold (t1 `TArr` t2)
     pretty (TTup xs) = P.tupled (fmap pretty xs)
     pretty (TForall xs ty) =
         "forall" <+> P.sep (fmap pretty xs) <+> pretty ty
-
-instance Show Type where
-    show ty = T.unpack $ docRender (pretty ty)
 
 instance Pretty Literal where
     pretty (LInt n) = pretty n
     pretty (LReal x) = pretty x
     pretty (LBool p) = if p then "true" else "false"
     pretty (LFun x _) = pretty x
-
-instance Show Literal where
-    show lit = T.unpack $ docRender (pretty lit)
 
 instance Pretty Expr where
     pretty (EVar x) = pretty x
@@ -113,31 +116,32 @@ instance Pretty Expr where
         P.encloseSep "(" ")" " " xs
         where xs = fmap pretty (appUnfold t)
     pretty t@ELet{} =
-        "let" <+> P.vsep xs <+> P.softline <+>
-                    "in" <+> pretty t
+        "let" <+> P.vsep xs <+> P.softline <+> "in" <+> pretty t
         where
             (xs',t') = letUnfold t
             xs = fmap (\(x,y) -> pretty x <+> "=" <+> pretty y) xs'
+        
     pretty (ELit b) = pretty b
     pretty (EIfte cd tr fl) = P.sep
         [ "if" <+> pretty cd
         , "then" <+> pretty tr
         , "else" <+> pretty fl
         ]
-    pretty (ECase t xs) = "match" <+> pretty t <+> "of" <> hardline 
-                    <> P.vsep (fmap pretty xs)
-    pretty (EAnno t ty) = pretty t <+> pretty ty
+    pretty (ECase expr ty cases) =
+        "match" <+> pretty expr <+> ":" <+> pretty ty <+>"of" <> hardline
+            <> P.vsep (fmap pretty cases)
+        -- "match" <+> pretty t <+> "of" <> hardline <> P.vsep (fmap pretty xs)
+    pretty (EAnno t ty) = "(" <+> pretty t <+> ":" <+> pretty ty <+> ")"
     pretty (ETup xs) = P.tupled (fmap pretty xs)
 
-instance Show Expr where
-    show e = T.unpack $ docRender (pretty e)
+instance Pretty Case where
+    pretty Case{..} =
+        "| case" <+>  bracketed (fmap pretty (cons:args)) <+>
+            "->" <+> pretty body
 
 instance Pretty Match where
     pretty Match{..} =
         "|" <+> pretty matchPat <+> "->" <+> pretty matchBody
-
-instance Show Match where
-    show m = T.unpack $ docRender (pretty m)
 
 instance Pretty Pattern where
     pretty (PVar x) = pretty x
@@ -147,18 +151,23 @@ instance Pretty Pattern where
     pretty (PLit lit) = pretty lit
     pretty PWild = "_"
 
-instance Show Pattern where
-    show p = T.unpack $ docRender (pretty p)
+tyArrFold :: [Type] -> Type
+tyArrFold = foldr1 TArr
 
-arrFold :: [Type] -> Type
-arrFold = foldr1 TArr
-
-arrUnfold :: Type -> [Type]
-arrUnfold t = arrUnfold' t []
+tyArrUnfold :: Type -> [Type]
+tyArrUnfold t = tyArrUnfold' t []
     where
-        arrUnfold' (TArr t1 t2) xs = arrUnfold' t2 (t1:xs)
-        arrUnfold' other xs = reverse (other:xs)
+        tyArrUnfold' (TArr t1 t2) xs = tyArrUnfold' t2 (t1:xs)
+        tyArrUnfold' other xs = reverse (other:xs)
 
+tyAppFold :: [Type] -> Type
+tyAppFold = foldl1 TApp
+
+tyAppUnfold :: Type -> [Type]
+tyAppUnfold t = tyAppUnfold' t []
+    where
+        tyAppUnfold' (TApp t1 t2) xs = tyAppUnfold' t1 (t2:xs)
+        tyAppUnfold' other xs = other:xs
 
 lamFold :: ([Name],Expr) -> Expr
 lamFold (xs,t) = foldr ELam t xs
@@ -229,3 +238,20 @@ instance Substitutable Type where
         in TForall xs (subst s' ty)
     subst s other = other
 
+instance Show Type where
+    show e = T.unpack $ docRender (pretty e)
+
+instance Show Expr where
+    show e = T.unpack $ docRender (pretty e)
+
+instance Show Literal where
+    show e = T.unpack $ docRender (pretty e)
+
+instance Show Case where
+    show e = T.unpack $ docRender (pretty e)
+
+instance Show Match where
+    show e = T.unpack $ docRender (pretty e)
+
+instance Show Pattern where
+    show e = T.unpack $ docRender (pretty e)
