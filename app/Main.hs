@@ -9,6 +9,8 @@ import Control.Monad
 
 import Data.Map as M
 
+sdsd
+
 main :: IO ()
 main = do
     args <- getArgs

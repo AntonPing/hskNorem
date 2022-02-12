@@ -11,6 +11,17 @@ import Data.Maybe
 
 import qualified Data.Text as T
 import Prettyprinter as P
+    ( (<+>),
+      defaultLayoutOptions,
+      encloseSep,
+      hardline,
+      layoutPretty,
+      sep,
+      softline,
+      tupled,
+      vsep,
+      Doc,
+      Pretty(pretty) )
 import Prettyprinter.Render.Text as PRT
 
 
@@ -91,7 +102,7 @@ instance Pretty Type where
     pretty t@TArr{} = P.encloseSep "(" ")" " -> "
         (fmap pretty (tyArrUnfold t))
     
-    pretty t@TApp{} = bracketed (fmap pretty (tyAppUnfold t))
+    --pretty t@TApp{} = bracketed (fmap pretty (tyAppUnfold t))
 
     pretty (TTup xs) = P.tupled (fmap pretty xs)
     pretty (TForall xs ty) =
@@ -127,8 +138,8 @@ instance Pretty Expr where
         , "then" <+> pretty tr
         , "else" <+> pretty fl
         ]
-    pretty (ECase expr ty cases) =
-        "match" <+> pretty expr <+> ":" <+> pretty ty <+>"of" <> hardline
+    pretty (ECase expr cases) =
+        "match" <+> pretty expr <+>"of" <> hardline
             <> P.vsep (fmap pretty cases)
         -- "match" <+> pretty t <+> "of" <> hardline <> P.vsep (fmap pretty xs)
     pretty (EAnno t ty) = "(" <+> pretty t <+> ":" <+> pretty ty <+> ")"
@@ -160,14 +171,16 @@ tyArrUnfold t = tyArrUnfold' t []
         tyArrUnfold' (TArr t1 t2) xs = tyArrUnfold' t2 (t1:xs)
         tyArrUnfold' other xs = reverse (other:xs)
 
-tyAppFold :: [Type] -> Type
-tyAppFold = foldl1 TApp
+--tyAppFold :: [Type] -> Type
+--tyAppFold = foldl1 TApp
 
+{-
 tyAppUnfold :: Type -> [Type]
 tyAppUnfold t = tyAppUnfold' t []
     where
         tyAppUnfold' (TApp t1 t2) xs = tyAppUnfold' t1 (t2:xs)
         tyAppUnfold' other xs = other:xs
+-}
 
 lamFold :: ([Name],Expr) -> Expr
 lamFold (xs,t) = foldr ELam t xs
