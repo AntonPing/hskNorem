@@ -19,7 +19,7 @@ langDef = Tok.LanguageDef
   , Tok.opStart         = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , Tok.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , Tok.reservedNames   = [
-      "=","->","fn","let","in",
+      "=","->","=>","fn","let","in",
       "match", "of", "|",
       "if","then","else",
       "true", "false"
@@ -94,13 +94,13 @@ letIn = do
     body <- application
     return $ ELet var def body
 
-literal :: Parser Literal
+literal :: Parser LitValue
 literal = do
         LInt <$> litInt
     <|> LReal <$> litReal
     <|> peek (reserved "true") (return (LBool True))
     <|> peek (reserved "false") (return (LBool False))
-    <?> "Can't Parse Literal!"
+    <?> "Can't Parse LitValue!"
 
 expression :: Parser Expr
 expression = do
@@ -139,22 +139,21 @@ pWild = char '_' >> return PWild
 pattern' :: Parser Pattern
 pattern' = choice [pCon,pTup,pVar,pLit,pWild]
 
-match :: Parser Match
-match = do
+branch :: Parser (Pattern,Expr)
+branch = do
     reserved "|"
-    lhs <- pattern'
-    spaces >> reserved "->" >> spaces
-    rhs <- expression
-    return $ Match lhs rhs []
+    pat <- pattern'
+    spaces >> reserved "=>" >> spaces
+    body <- expression
+    return (pat,body)
 
 case' :: Parser Expr
 case' = do
     reserved "match"
     expr <- expression
     reserved "of"
-    cases <- many1 match
+    cases <- many1 branch
     return $ ECase expr cases
-
 
 parseExpr :: String -> Either ParseError Expr
 parseExpr = parse expression "input"

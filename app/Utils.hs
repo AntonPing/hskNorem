@@ -33,52 +33,49 @@ data Expr =
     | EApp Expr Expr
     | ELet Name Expr Expr
     | ETup [Expr]
-    | ELit Literal
+    | ELit LitValue
     | EIfte Expr Expr Expr
-    | ECase Expr [Case]
+    | ECase Expr [(Pattern,Expr)]
     | EAnno Expr Type
     deriving (Eq, Ord)
 
 -- | EBlock (M.Map Name Expr) Expr
 
-data Case = Case
-    { cons :: Name
-    , args :: [Name]
-    , body :: Expr
-    } deriving (Eq, Ord)
-
-
-data Match = Match
-    { matchPat :: Pattern
-    , matchBody :: Expr
-    }
-    deriving (Eq, Ord)
-
 data Pattern =
       PVar Name
-    | PCon Name [Pattern]
+    | PCon Name [Name]
     | PTup [Pattern]
-    | PLit Literal
+    | PLit LitValue
     | PWild
-    deriving (Eq, Ord)
-
-data Literal =
-      LInt Int
-    | LReal Double
-    | LBool Bool
-    | LFun Name Type
     deriving (Eq, Ord)
 
 data Type =
       TVar Name
-    | TInt
-    | TReal
-    | TBool
+    | TCon Name [Name] [Type]
+    | TLit LitType
     | TArr Type Type
-    | TCon Name [Type]
     | TTup [Type]
     | TForall [Name] Type
     deriving (Eq, Ord)
+
+
+
+data LitValue =
+      LInt Int
+    | LReal Double
+    | LBool Bool
+    deriving (Eq, Ord)
+
+data LitType =
+      TInt
+    | TReal
+    | TBool
+    | TUnit
+    | TVoid
+    deriving (Eq, Ord)
+
+
+
 {-
 data Decl =
       DMod (M.Map String Decl)
@@ -88,6 +85,7 @@ data Decl =
     deriving (Eq, Ord, Show)
 -}
 
+
 bracketed :: [Doc ann] -> Doc ann
 bracketed =  P.encloseSep "(" ")" " "
 
@@ -96,23 +94,28 @@ docRender = renderStrict . layoutPretty defaultLayoutOptions
 
 instance Pretty Type where
     pretty (TVar x) = pretty x
-    pretty TInt = "Int"
-    pretty TReal = "Real"
-    pretty TBool = "Bool"
+    pretty (TCon con args ) = 
+        
+        pretty con 
+    pretty (TLit lit) = pretty lit
     pretty t@TArr{} = P.encloseSep "(" ")" " -> "
         (fmap pretty (tyArrUnfold t))
-    
     --pretty t@TApp{} = bracketed (fmap pretty (tyAppUnfold t))
-
     pretty (TTup xs) = P.tupled (fmap pretty xs)
     pretty (TForall xs ty) =
         "forall" <+> P.sep (fmap pretty xs) <+> pretty ty
 
-instance Pretty Literal where
+instance Pretty LitValue where
     pretty (LInt n) = pretty n
     pretty (LReal x) = pretty x
     pretty (LBool p) = if p then "true" else "false"
-    pretty (LFun x _) = pretty x
+
+instance Pretty LitType where
+    pretty TInt = "Int"
+    pretty TReal = "Real"
+    pretty TBool = "Bool"
+    pretty TUnit = "Unit"
+    pretty TVoid = "Void"
 
 instance Pretty Expr where
     pretty (EVar x) = pretty x
@@ -140,19 +143,14 @@ instance Pretty Expr where
         ]
     pretty (ECase expr cases) =
         "match" <+> pretty expr <+>"of" <> hardline
-            <> P.vsep (fmap pretty cases)
+            <> P.vsep (fmap prettyBranch cases)
+            where
+                prettyBranch (pat,body) =
+                    "| case" <+> pretty pat <+> "=>" <+> pretty body
         -- "match" <+> pretty t <+> "of" <> hardline <> P.vsep (fmap pretty xs)
     pretty (EAnno t ty) = "(" <+> pretty t <+> ":" <+> pretty ty <+> ")"
     pretty (ETup xs) = P.tupled (fmap pretty xs)
 
-instance Pretty Case where
-    pretty Case{..} =
-        "| case" <+>  bracketed (fmap pretty (cons:args)) <+>
-            "->" <+> pretty body
-
-instance Pretty Match where
-    pretty Match{..} =
-        "|" <+> pretty matchPat <+> "->" <+> pretty matchBody
 
 instance Pretty Pattern where
     pretty (PVar x) = pretty x
@@ -257,13 +255,7 @@ instance Show Type where
 instance Show Expr where
     show e = T.unpack $ docRender (pretty e)
 
-instance Show Literal where
-    show e = T.unpack $ docRender (pretty e)
-
-instance Show Case where
-    show e = T.unpack $ docRender (pretty e)
-
-instance Show Match where
+instance Show LitValue where
     show e = T.unpack $ docRender (pretty e)
 
 instance Show Pattern where
