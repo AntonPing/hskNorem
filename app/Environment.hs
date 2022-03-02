@@ -97,7 +97,10 @@ getFunc :: (MonadState EnvState m) => Name -> m (Maybe FuncDecl)
 getFunc x = gets (M.lookup x . _funcDefs)
 
 
-getConstructor :: Name -> Maybe [Type]
+--getConstructor :: Name -> Maybe [Type]
+
+
+
 
 emptyEnvReader = EnvReader {
       _typeEnv = M.empty

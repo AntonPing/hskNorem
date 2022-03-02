@@ -89,16 +89,16 @@ instantiate vars t = do
     let s = M.fromList (zip vars (fmap TVar nvars))
     return $ apply s t
 
-{-
-tupleUnify :: [Type] -> [Type] -> Infer Subst
-tupleUnify [] [] = return M.empty
-tupleUnify xs [] = throwError TupleDiffLength
-tupleUnify [] ys = throwError TupleDiffLength
-tupleUnify (x:xs) (y:ys) = do
+
+listUnify :: [Type] -> [Type] -> Infer Subst
+listUnify [] [] = return M.empty
+listUnify xs [] = throwError TupleDiffLength
+listUnify [] ys = throwError TupleDiffLength
+listUnify (x:xs) (y:ys) = do
     s1 <- unify x y
-    s2 <- tupleUnify (apply s1 xs) (apply s1 ys)
+    s2 <- listUnify (apply s1 xs) (apply s1 ys)
     return $ s1 `compose` s2
--}
+
 
 unify :: Type -> Type -> Infer Subst
 unify (TVar a) (TVar b) = return $
@@ -108,24 +108,18 @@ unify (TVar a) t = if a `S.member` ftv t
     then throwError OccurCheckFailed
     else return $ M.singleton a t
 unify t (TVar a) = unify (TVar a) t
+{-
 unify (TCon a) (TCon b) =
     -----------------
     undefined --todo
     -----------------
+-}
 unify (TArr a1 b1) (TArr a2 b2) = do
     s1 <- unify a1 a2
     s2 <- unify (apply s1 b1) (apply s1 b2)
     return $ s2 `compose` s1
-
-unify (TTup []) (TTup []) = return M.empty
-unify (TTup xs) (TTup ys)
-    | length xs == length ys = 
-        let f s0 (x,y) = do
-                s1 <- unify (apply s0 x) (apply s0 y)
-                return (s0 `compose` s1)
-        in foldM f M.empty (zip xs ys) 
-    | otherwise = throwError TupleDiffLength
-
+unify (TTup xs) (TTup ys) = listUnify xs ys
+unify (TSum xs) (TSum ys) = listUnify xs ys
 unify (TLit l1) (TLit l2)
     | l1 == l2 = return M.empty
     | otherwise = throwError ConstUnifyFailed
@@ -171,7 +165,7 @@ ti (ELet x e1 e2) = do
         t1' <- generalize t1
         (s2, t2) <- localTypeEnv (M.insert x t1') (ti e2)
         return (s1 `compose` s2, t2)
-
+ti (ELit lit) = return $ tiLiteral lit
 ti (ETup []) = return (M.empty, TLit TUnit)
 ti (ETup xs) =
     let f (s0, ts) x = do
@@ -179,8 +173,16 @@ ti (ETup xs) =
             return (s0 `compose` s1, t:ts)
     in Bi.second TTup <$> foldM f (M.empty, []) xs
 
-ti (ELit lit) = return $ tiLiteral lit
-
+ti (ESum i j expr)
+    | j <= 0 = throwError UnknownError
+    | i <= 0 = throwError UnknownError
+    | i > j = throwError UnknownError
+    | otherwise = do
+        (s1,t1) <- ti expr
+        xs <- mapM (const (TVar <$> newSymb)) [0..i]
+        let x = xs !! j
+        s2 <- unify x t1
+        return $ (s1 `compose` s2, TSum xs)
 ti (EIfte c t f) = do
     (s1, tc) <- ti c
     s2 <- unify (apply s1 tc) (TLit TBool)
@@ -190,13 +192,27 @@ ti (EIfte c t f) = do
         s5 <- unify (apply (s3 `compose` s4) tt) (apply s4 tf)
         let bigS = foldl compose M.empty [s1,s2,s3,s4,s5]
         return (bigS,apply bigS tt)
+ti (EMatch expr xs t) = do
+    (s1,t1) <- ti expr
+    
+    
+    t' <- instantiate xs t
+
+
+
+{-
+
+
+
+
+
 
 ti _ = return (M.empty , TLit TInt)
 
 ti (ECase x css) = do
     tell $ "+ In Pattern Matching:" <+> pretty x
     (s1, ty) <- ti x
-
+-}
 
 
 
@@ -221,6 +237,7 @@ ti (ECase x css) = do
                 Nothing -> throwError e
 -}
 
+{-
 tiPattern :: Type -> Pattern -> Infer (Subst, Type) -> Infer (Subst, Type)
 tiPattern ty (PVar x) = localTypeEnv (M.insert x ty)
 --tiPattern ty (PCon x xs) = do
@@ -228,7 +245,7 @@ tiPattern ty (PVar x) = localTypeEnv (M.insert x ty)
     --case dt of
         --Just (DataDecl {y,ys))
 tiPattern ty ()
-
+-}
 
 
 tiLiteral ::  LitValue -> (Subst, Type)

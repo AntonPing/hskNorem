@@ -118,13 +118,13 @@ tupled p = parens $ sepBy p (char ',')
 
 pVar :: Parser Pattern
 pVar = PVar <$> varName
-
+{-
 pCon :: Parser Pattern
 pCon = parens $ do
     x <- varName
     xs <- sepBy1 pattern' spaces
     return $ PCon x xs
-
+-}
 pTup :: Parser Pattern
 pTup = do
     xs <- tupled pattern'
@@ -137,7 +137,7 @@ pWild :: Parser Pattern
 pWild = char '_' >> return PWild
 
 pattern' :: Parser Pattern
-pattern' = choice [pCon,pTup,pVar,pLit,pWild]
+pattern' = choice [{-pCon,-}pTup,pVar,pLit,pWild]
 
 branch :: Parser (Pattern,Expr)
 branch = do

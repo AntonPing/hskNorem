@@ -8,7 +8,6 @@ import qualified Data.Set as S
 import qualified Data.List as L
 import Data.Maybe
 
-
 import qualified Data.Text as T
 import Prettyprinter as P
     ( (<+>),
@@ -32,10 +31,12 @@ data Expr =
     | ELam Name Expr
     | EApp Expr Expr
     | ELet Name Expr Expr
-    | ETup [Expr]
+    | ETup [Expr] -- (Expr, ... , Expr)
+    | ESum Int Int Expr -- <_, ... , Expr, ... ,_>
     | ELit LitValue
     | EIfte Expr Expr Expr
-    | ECase Expr [(Pattern,Expr)]
+    | EMatch Expr [Name] Expr
+    | ECase Expr [(Name,Expr)]
     | EAnno Expr Type
     deriving (Eq, Ord)
 
@@ -51,14 +52,19 @@ data Pattern =
 
 data Type =
       TVar Name
-    | TCon Name [Name] [Type]
+    | TLam Name Kind Type
+    | TApp Type Type
     | TLit LitType
     | TArr Type Type
     | TTup [Type]
+    | TSum [Type]
     | TForall [Name] Type
     deriving (Eq, Ord)
 
-
+data Kind = 
+      Star
+    | KArr Kind Kind
+    deriving (Eq, Ord)
 
 data LitValue =
       LInt Int
@@ -74,34 +80,27 @@ data LitType =
     | TVoid
     deriving (Eq, Ord)
 
-
-
-{-
-data Decl =
-      DMod (M.Map String Decl)
-    | DFunc Expr
-    | DSum [(String,Type)]
-    | DProd [Type]
-    deriving (Eq, Ord, Show)
--}
-
-
 bracketed :: [Doc ann] -> Doc ann
 bracketed =  P.encloseSep "(" ")" " "
 
 docRender :: Doc ann -> T.Text
 docRender = renderStrict . layoutPretty defaultLayoutOptions
 
+instance Pretty Kind where
+    pretty Star = "*"
+    pretty (KArr k1 k2) = pretty k1 <+> "->" <+> pretty k2
+
 instance Pretty Type where
     pretty (TVar x) = pretty x
-    pretty (TCon con args ) = 
-        
-        pretty con 
+    pretty (TLam x k t) =
+        "(Λ." <+> pretty x <+> ":" <+> pretty k <+> "->" <+> pretty t <> ")"
+        -- todo : fold and unfold for TLam
+    pretty (TApp t1 t2) = "(" <+> pretty t1 <+> pretty t2 <+> ")"
     pretty (TLit lit) = pretty lit
     pretty t@TArr{} = P.encloseSep "(" ")" " -> "
         (fmap pretty (tyArrUnfold t))
-    --pretty t@TApp{} = bracketed (fmap pretty (tyAppUnfold t))
-    pretty (TTup xs) = P.tupled (fmap pretty xs)
+    pretty (TTup xs) = P.encloseSep "(" ")" "," (fmap pretty xs)
+    pretty (TSum xs) = P.encloseSep "<" ">" "," (fmap pretty xs)
     pretty (TForall xs ty) =
         "forall" <+> P.sep (fmap pretty xs) <+> pretty ty
 
@@ -136,21 +135,26 @@ instance Pretty Expr where
             xs = fmap (\(x,y) -> pretty x <+> "=" <+> pretty y) xs'
         
     pretty (ELit b) = pretty b
+    pretty (ETup xs) = P.encloseSep "(" ")" "," (fmap pretty xs)
+    pretty (ESum i j expr) = P.encloseSep "<" ">" "," (xs ++ [pretty expr] ++ ys) 
+        where
+            (xs,_:ys) = splitAt j (replicate i "_")
     pretty (EIfte cd tr fl) = P.sep
         [ "if" <+> pretty cd
         , "then" <+> pretty tr
         , "else" <+> pretty fl
         ]
+    pretty (EMatch expr xs t) = 
+        "match" <+> pretty expr <+> "with" <+>
+            P.sep (fmap pretty xs) <+> "=>" <> hardline <> pretty t
     pretty (ECase expr cases) =
-        "match" <+> pretty expr <+>"of" <> hardline
+        "case" <+> pretty expr <+> "of" <> hardline
             <> P.vsep (fmap prettyBranch cases)
             where
                 prettyBranch (pat,body) =
-                    "| case" <+> pretty pat <+> "=>" <+> pretty body
-        -- "match" <+> pretty t <+> "of" <> hardline <> P.vsep (fmap pretty xs)
-    pretty (EAnno t ty) = "(" <+> pretty t <+> ":" <+> pretty ty <+> ")"
-    pretty (ETup xs) = P.tupled (fmap pretty xs)
-
+                    "|" <+> pretty pat <+> "=>" <+> pretty body
+    
+    pretty (EAnno expr ty) = pretty expr <+> ":" <+> pretty ty
 
 instance Pretty Pattern where
     pretty (PVar x) = pretty x
@@ -169,16 +173,15 @@ tyArrUnfold t = tyArrUnfold' t []
         tyArrUnfold' (TArr t1 t2) xs = tyArrUnfold' t2 (t1:xs)
         tyArrUnfold' other xs = reverse (other:xs)
 
---tyAppFold :: [Type] -> Type
---tyAppFold = foldl1 TApp
+tyAppFold :: [Type] -> Type
+tyAppFold = foldl1 TApp
 
-{-
 tyAppUnfold :: Type -> [Type]
 tyAppUnfold t = tyAppUnfold' t []
     where
         tyAppUnfold' (TApp t1 t2) xs = tyAppUnfold' t1 (t2:xs)
         tyAppUnfold' other xs = other:xs
--}
+
 
 lamFold :: ([Name],Expr) -> Expr
 lamFold (xs,t) = foldr ELam t xs
