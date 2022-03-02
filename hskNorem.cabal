@@ -39,6 +39,14 @@ executable hskNorem
     -- other-extensions:
     build-depends:
         base ^>=4.15.1.0
+        , containers
+        , text
+        , mtl
+        , prettyprinter
+        , parsec
+        , haskeline
+        , repline
+
     
     hs-source-dirs:   app
     default-language: Haskell2010

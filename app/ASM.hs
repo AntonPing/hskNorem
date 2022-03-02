@@ -1,5 +1,5 @@
 module ASM where
-
+{-
 import Control.Monad.Fix
 
 type Name = String
@@ -34,3 +34,4 @@ asm start (ASM f) = bytes where (bytes, _, _) = f start
 newtype AllocState = AllocState
     { freeRegs :: [Reg]
     }
+-}
